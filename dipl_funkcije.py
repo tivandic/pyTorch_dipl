@@ -6,6 +6,9 @@ from torchvision import transforms
 import os
 from tqdm.auto import tqdm
 from typing import Dict, List, Tuple
+import seaborn as sns
+from sklearn.metrics import confusion_matrix
+import pandas as pd
 
 # roc_auc multi class OvR
 def roc_auc_score_mc(true_class, pred_class, average):
@@ -74,88 +77,92 @@ def plot_results(results):
     plt.plot(epochs, test_accuracy, label="Test accuracy")
     plt.legend()
 
-# PROVJERENO I KOPIRANO DO OVDJE 
+# matrica konfuzije
+def con_matrix(best_true, best_pred):
+  conf_matrix = confusion_matrix(best_true, best_pred)
+  conf_matrix_df = pd.DataFrame(conf_matrix,
+                     index = class_names, 
+                     columns = class_names)
+
+  plt.figure(figsize=(12,10))
+  sns.heatmap(conf_matrix_df, annot=True, cmap=sns.color_palette("viridis", as_cmap=True))
+  plt.ylabel('True values')
+  plt.xlabel('Predicted Values')
+  plt.show()
+
+  
+# treniranje jedne epohe
+def train_epoch(model: torch.nn.Module, 
+               dataloader: torch.utils.data.DataLoader, 
+               loss_fn: torch.nn.Module, 
+               optimizer: torch.optim.Optimizer,
+               device: torch.device) -> Tuple[float, float]:
+
+    train_loss, train_acc = 0, 0
+    model.train()
     
-# preuzeto iz going_modular; original dostupan na: 
-# https://github.com/mrdbourke/pytorch-deep-learning/blob/main/going_modular/going_modular/engine.py
-#
-# dodano vraćanje liste stvarnih i predicted klasa
+    for batch, (X, y) in enumerate(dataloader):
 
-from sklearn.metrics import f1_score, roc_auc_score, classification_report
-import numpy as np
+        X, y = X.to(device), y.to(device)
+        y_pred = model(X)
 
-def test_step(model: torch.nn.Module, 
+        loss = loss_fn(y_pred, y)
+        train_loss += loss.item() 
+
+        optimizer.zero_grad()
+        loss.backward()
+        optimizer.step()
+
+        y_pred_class = torch.argmax(torch.softmax(y_pred, dim=1), dim=1)
+        train_acc += (y_pred_class == y).sum().item()/len(y_pred)
+
+    train_loss = train_loss / len(dataloader)
+    train_acc = train_acc / len(dataloader)
+    return train_loss, train_acc
+
+# testiranje jedne epohe
+def test_epoch(model: torch.nn.Module, 
               dataloader: torch.utils.data.DataLoader, 
               loss_fn: torch.nn.Module,
               device: torch.device) -> Tuple[float, float]:
-    """Tests a PyTorch model for a single epoch.
-    Turns a target PyTorch model to "eval" mode and then performs
-    a forward pass on a testing dataset.
-    Args:
-    model: A PyTorch model to be tested.
-    dataloader: A DataLoader instance for the model to be tested on.
-    loss_fn: A PyTorch loss function to calculate loss on the test data.
-    device: A target device to compute on (e.g. "cuda" or "cpu").
-    Returns:
-    A tuple of testing loss and testing accuracy metrics.
-    In the form (test_loss, test_accuracy). For example:
-    (0.0223, 0.8985)
-    """
-    # Put model in eval mode
-    model.eval() 
 
-    # Setup test loss and test accuracy values
     test_loss, test_acc = 0, 0
+    model.eval()     
     
-    # Turn on inference context manager
     with torch.inference_mode():
-        # Loop through DataLoader batches
+  
         epoch_true_labels = []
         epoch_pred_labels = []
+
         for batch, (X, y) in enumerate(dataloader):
-            # Send data to target device
+      
             X, y = X.to(device), y.to(device)
+            pred_logits = model(X)
 
-            # 1. Forward pass
-            test_pred_logits = model(X)
-
-            # 2. Calculate and accumulate loss
-            loss = loss_fn(test_pred_logits, y)
+            loss = loss_fn(pred_logits, y)
             test_loss += loss.item()
 
-            # Calculate and accumulate accuracy
-            test_pred_labels = test_pred_logits.argmax(dim=1)
-            test_acc += ((test_pred_labels == y).sum().item()/len(test_pred_labels))
+            pred_labels = pred_logits.argmax(dim=1)
+            test_acc += ((pred_labels == y).sum().item()/len(pred_labels))
             
             # rješenje "tensor ili numpy array" zavrzlame
             if device == 'cuda':
               epoch_true_labels.append(y.cpu())
-              epoch_pred_labels.append(test_pred_labels.cpu())
+              epoch_pred_labels.append(pred_labels.cpu())
             else:
               epoch_true_labels.append(y)
-              epoch_pred_labels.append(test_pred_labels)
+              epoch_pred_labels.append(pred_labels)
               
     epoch_true_labels = np.concatenate(epoch_true_labels)
     epoch_pred_labels = np.concatenate(epoch_pred_labels)
-    
-    #print(classification_report(epoch_true_labels, epoch_pred_labels))
+      
     test_loss = test_loss / len(dataloader)
     test_acc = test_acc / len(dataloader)
-    #f1score = f1_score(epoch_true_labels, epoch_pred_labels, average = 'macro')
     
-    return test_loss, test_acc, epoch_true_labels, epoch_pred_labels    
-    
-from typing import Dict, List
-from tqdm.auto import tqdm
-from torch.utils.tensorboard import SummaryWriter
+    return test_loss, test_acc, epoch_true_labels, epoch_pred_labels
 
-
-# preuzeto iz going_modular; original dostupan na: 
-# https://github.com/mrdbourke/pytorch-deep-learning/blob/main/going_modular/going_modular/train.py
-# dodano early stopping, classification report, roc_auc
-# dodano proslijeđivanje best_epoch_true i best_epoch_pred 
-
-def train(model: torch.nn.Module, 
+# treniranje modela
+def train_model(model: torch.nn.Module, 
           train_dataloader: torch.utils.data.DataLoader, 
           test_dataloader: torch.utils.data.DataLoader, 
           optimizer: torch.optim.Optimizer,
@@ -165,65 +172,31 @@ def train(model: torch.nn.Module,
           best_model: str,
           labels: list,
           device: torch.device) -> Dict[str, List]:
-    """Trains and tests a PyTorch model.
 
-    Passes a target PyTorch models through train_step() and test_step()
-    functions for a number of epochs, training and testing the model
-    in the same epoch loop.
-
-    Calculates, prints and stores evaluation metrics throughout.
-
-    Args:
-      model: A PyTorch model to be trained and tested.
-      train_dataloader: A DataLoader instance for the model to be trained on.
-      test_dataloader: A DataLoader instance for the model to be tested on.
-      optimizer: A PyTorch optimizer to help minimize the loss function.
-      loss_fn: A PyTorch loss function to calculate loss on both datasets.
-      epochs: An integer indicating how many epochs to train for.
-      device: A target device to compute on (e.g. "cuda" or "cpu").
-      
-    Returns:
-      A dictionary of training and testing loss as well as training and
-      testing accuracy metrics. Each metric has a value in a list for 
-      each epoch.
-      In the form: {train_loss: [...],
-                train_acc: [...],
-                test_loss: [...],
-                test_acc: [...]} 
-      For example if training for epochs=2: 
-              {train_loss: [2.0616, 1.0537],
-                train_acc: [0.3945, 0.3945],
-                test_loss: [1.2641, 1.5706],
-                test_acc: [0.3400, 0.2973]} 
-    """
-    # Create empty results dictionary
     results = {"train_loss": [],
                "train_acc": [],
                "test_loss": [],
                "test_acc": [],
-               #"test_f1_score": []
-               #"test_roc_auc": []
-    }
+    } # rezultati
 
     roc_auc = {}
     best_accuracy = 0; # najbolji acc 
     es_counter = 1; # brojač epoha bez porasta acc 
-    best_epoch_true, best_epoch_pred = [], []
+    best_epoch_true, best_epoch_pred = [], [] # true/predicted iz najbolje epohe
 
-    # Loop through training and testing steps for a number of epochs
     for epoch in tqdm(range(epochs)):
-        train_loss, train_acc = train_step(model=model,
+        train_loss, train_acc = train_epoch(model=model,
                                            dataloader=train_dataloader,
                                            loss_fn=loss_fn,
                                            optimizer=optimizer,
                                            device=device)
-        test_loss, test_acc, epoch_true, epoch_pred = test_step(model=model,
+        
+        test_loss, test_acc, epoch_true, epoch_pred = test_epoch(model=model,
                                         dataloader=test_dataloader,
                                         loss_fn=loss_fn,
                                         device=device)
 
 
-        # Print out what's happening
         print ('============================================================================================')
         print(
           f"Epoch: {epoch+1} | "
@@ -231,12 +204,11 @@ def train(model: torch.nn.Module,
           f"train_acc: {train_acc:.4f} | "
           f"test_loss: {test_loss:.4f} | "
           f"test_acc: {test_acc:.4f} "
-          #f"test_f1_score: {f1score:.4f} "
         )
         
-        # ubačeno za early stopping
-
-        if    test_acc > best_accuracy: 
+        # provjera za early stopping
+        if es_patience > 0:
+          if    test_acc > best_accuracy: 
               torch.save(model.state_dict(), best_model)
               print('---------------------------------------------------------------------------------------------')
               print('Epoch ', (epoch + 1), '| Best model saved in ', best_model) 
@@ -244,32 +216,28 @@ def train(model: torch.nn.Module,
               es_counter = 1
               best_epoch_true = epoch_true
               best_epoch_pred = epoch_pred
+
               print(classification_report(y_true=epoch_true, y_pred=epoch_pred, target_names=labels, zero_division=0))
+
               roc_auc = roc_auc_score_mc(epoch_true, epoch_pred, average = 'macro')
               print('{:>12}  {:>9}'.format("", "ROC_AUC (OvR)"))
 
-              #for l , v in roc_auc.items(): 
-              #    print ('{:>12}  {:>9}'.format(labels[l], round(v, 4)))
               for l , v in roc_auc.items(): 
                   print ('{:>12}  {:>9}'.format(labels[l], round(v, 4)))
-        else:
+          else:
               es_counter = es_counter + 1      
 
-
-        # Update results dictionary
         results["train_loss"].append(train_loss)
         results["train_acc"].append(train_acc)
         results["test_loss"].append(test_loss)
         results["test_acc"].append(test_acc)
-        #results["test_f1_score"].append(f1score)
-        #results["test_roc_auc"].append(roc_auc)
        
         # provjera za early stopping
-
-        if es_counter > es_patience:
+        if es_patience > 0:
+          if es_counter > es_patience:
             print ('Test accuracy not improving for ', es_patience ,' epochs - early stopping.')
             print ('Best model saved in ', best_model)
             print ('Best test accuracy: ', best_accuracy)
             break
         
-    return results, best_epoch_true, best_epoch_pred    
+    return results, best_epoch_true, best_epoch_pred  
