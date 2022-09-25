@@ -7,6 +7,7 @@ import os
 from tqdm.auto import tqdm
 from typing import Dict, List, Tuple
 
+# roc_auc multi class OvR
 def roc_auc_score_mc(true_class, pred_class, average):
   classes = set(true_class)
   roc_auc_dict = {}
@@ -20,13 +21,15 @@ def roc_auc_score_mc(true_class, pred_class, average):
   return roc_auc_dict
 
 
+# roc_auc_curve multi class OvR
 def roc_auc_curve_mc(true_class, pred_class, classes):
 
   from sklearn import metrics
-  classes = set(true_class)
+
+  j_classes = set(true_class)
   roc_auc_dict = {}
-  for one_class in classes:
-    other_classes = [x for x in classes if x != one_class]
+  for one_class in j_classes:
+    other_classes = [x for x in j_classes if x != one_class]
     true_classes = [0 if x in other_classes else 1 for x in true_class]
     pred_classes = [0 if x in other_classes else 1 for x in pred_class]
 
@@ -34,8 +37,7 @@ def roc_auc_curve_mc(true_class, pred_class, classes):
     roc_auc = metrics.auc(fpr, tpr)
 
     plt.rcParams["figure.figsize"] = (12,10)
-
-    plt.title(classes[per_class])
+    plt.title(classes[one_class])
     plt.plot(fpr, tpr, 'b', label = 'AUC = %0.2f' % roc_auc)
     plt.legend(loc = 'lower right')
     plt.plot([0, 1], [0, 1],'r--')
