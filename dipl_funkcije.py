@@ -47,7 +47,35 @@ def roc_auc_curve_mc(true_class, pred_class, classes):
     plt.xlabel('False Positive Rate')
     plt.show()
 
+# loss/accuracy per epoch krivulje
+def plot_results(results):
 
+    train_loss = results["train_loss"]
+    test_loss = results["test_loss"]
+
+    train_accuracy = results["train_acc"]
+    test_accuracy = results["test_acc"]
+
+    epochs = range(len(results["train_loss"]))
+
+    plt.figure(figsize=(15, 7))
+
+    plt.subplot(1, 2, 1)
+    plt.title("Loss per epoch")
+    plt.xlabel("Epoch")
+    plt.plot(epochs, train_loss, label="Train loss")
+    plt.plot(epochs, test_loss, label="Test loss")
+    plt.legend()
+
+    plt.subplot(1, 2, 2)
+    plt.title("Accuracy per epoch")
+    plt.xlabel("Epoch")
+    plt.plot(epochs, train_accuracy, label="Train accuracy")
+    plt.plot(epochs, test_accuracy, label="Test accuracy")
+    plt.legend()
+
+# PROVJERENO I KOPIRANO DO OVDJE 
+    
 # preuzeto iz going_modular; original dostupan na: 
 # https://github.com/mrdbourke/pytorch-deep-learning/blob/main/going_modular/going_modular/engine.py
 #
