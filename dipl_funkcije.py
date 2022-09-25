@@ -78,7 +78,7 @@ def plot_results(results):
     plt.legend()
 
 # matrica konfuzije
-def con_matrix(best_true, best_pred):
+def con_matrix(best_true, best_pred, title):
   conf_matrix = confusion_matrix(best_true, best_pred)
   conf_matrix_df = pd.DataFrame(conf_matrix,
                      index = class_names, 
@@ -86,6 +86,7 @@ def con_matrix(best_true, best_pred):
 
   plt.figure(figsize=(12,10))
   sns.heatmap(conf_matrix_df, annot=True, cmap=sns.color_palette("viridis", as_cmap=True))
+  plt.title(title)
   plt.ylabel('True values')
   plt.xlabel('Predicted Values')
   plt.show()
