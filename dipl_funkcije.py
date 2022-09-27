@@ -79,7 +79,7 @@ def plot_results(results):
     plt.legend()
 
 # matrica konfuzije
-def con_matrix(best_true, best_pred, title):
+def con_matrix(best_true, best_pred, class_names, title):
   conf_matrix = confusion_matrix(best_true, best_pred)
   conf_matrix_df = pd.DataFrame(conf_matrix,
                      index = class_names, 
