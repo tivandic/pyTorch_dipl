@@ -9,6 +9,7 @@ from typing import Dict, List, Tuple
 import seaborn as sns
 from sklearn.metrics import confusion_matrix
 import pandas as pd
+import numpy as np
 
 # roc_auc multi class OvR
 def roc_auc_score_mc(true_class, pred_class, average):
