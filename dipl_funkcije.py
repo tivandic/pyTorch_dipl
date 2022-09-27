@@ -103,6 +103,8 @@ def train_epoch(model: torch.nn.Module,
     train_loss, train_acc = 0, 0
     model.train()
     
+    import numpy as np
+    
     for batch, (X, y) in enumerate(dataloader):
 
         X, y = X.to(device), y.to(device)
