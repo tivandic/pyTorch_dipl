@@ -163,8 +163,92 @@ def test_epoch(model: torch.nn.Module,
     
     return test_loss, test_acc, epoch_true_labels, epoch_pred_labels
 
-# treniranje modela
+# treniranje modela; nova funkcija
 def train_model(model: torch.nn.Module, 
+          train_dataloader: torch.utils.data.DataLoader, 
+          test_dataloader: torch.utils.data.DataLoader, 
+          optimizer: torch.optim.Optimizer,
+          loss_fn: torch.nn.Module,
+          epochs: int,
+          es_patience: int,
+          best_model: str,
+          labels: list,
+          device: torch.device) -> Dict[str, List]:
+
+    results = {"train_loss": [],
+               "train_acc": [],
+               "test_loss": [],
+               "test_acc": [],
+    } # rezultati
+
+    roc_auc = {}
+    best_accuracy = 0; # najbolji acc 
+    es_counter = 1; # brojač epoha bez porasta acc 
+    best_epoch = 0 # epoha s najboljim acc
+
+    epochs_true, epochs_pred = [], [] # liste true/pred iz svake epohe
+    for epoch in tqdm(range(epochs)):
+        train_loss, train_acc = train_epoch(model=model,
+                                           dataloader=train_dataloader,
+                                           loss_fn=loss_fn,
+                                           optimizer=optimizer,
+                                           device=device)
+        
+        test_loss, test_acc, epoch_true, epoch_pred = test_epoch(model=model,
+                                        dataloader=test_dataloader,
+                                        loss_fn=loss_fn,
+                                        device=device)
+
+
+        print ('============================================================================================')
+        print(
+          f"Epoch: {epoch+1} | "
+          f"train_loss: {train_loss:.4f} | "
+          f"train_acc: {train_acc:.4f} | "
+          f"test_loss: {test_loss:.4f} | "
+          f"test_acc: {test_acc:.4f} "
+        )
+        
+        # provjera za early stopping
+        if es_patience > 0:
+          if    test_acc > best_accuracy: 
+              torch.save(model.state_dict(), best_model)
+              print('---------------------------------------------------------------------------------------------')
+              print('Epoch ', (epoch + 1), '| Best model saved in ', best_model) 
+              best_accuracy = test_acc
+              es_counter = 1
+              best_epoch = epoch
+
+              print(classification_report(y_true=epoch_true, y_pred=epoch_pred, target_names=labels, zero_division=0))
+
+              roc_auc = roc_auc_score_mc(epoch_true, epoch_pred, average = 'macro')
+              print('{:>12}  {:>9}'.format("", "ROC_AUC (OvR)"))
+
+              for l , v in roc_auc.items(): 
+                  print ('{:>12}  {:>9}'.format(labels[l], round(v, 4)))
+          else:
+              es_counter = es_counter + 1      
+
+        results["train_loss"].append(train_loss)
+        results["train_acc"].append(train_acc)
+        results["test_loss"].append(test_loss)
+        results["test_acc"].append(test_acc)
+        
+        epochs_true.append(epoch_true)
+        epochs_pred.append(epoch_pred)
+
+        # provjera za early stopping
+        if es_patience > 0:
+          if es_counter > es_patience:
+            print ('Test accuracy not improving for ', es_patience ,' epochs - early stopping.')
+            print ('Best model saved in ', best_model)
+            print ('Best test accuracy: ', best_accuracy)
+            break
+        
+    return results, best_epoch, epochs_true, epochs_pred
+  
+# treniranje modela; stara funkcija
+def train_model_old(model: torch.nn.Module, 
           train_dataloader: torch.utils.data.DataLoader, 
           test_dataloader: torch.utils.data.DataLoader, 
           optimizer: torch.optim.Optimizer,
