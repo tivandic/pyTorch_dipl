@@ -7,7 +7,8 @@ import os
 from tqdm.auto import tqdm
 from typing import Dict, List, Tuple
 import seaborn as sns
-from sklearn.metrics import confusion_matrix
+from sklearn.metrics import confusion_matrix, classification_report, roc_auc_score, classification_report
+from sklearn.metrics import 
 import pandas as pd
 import numpy as np
 
@@ -102,8 +103,6 @@ def train_epoch(model: torch.nn.Module,
 
     train_loss, train_acc = 0, 0
     model.train()
-    
-    import numpy as np
     
     for batch, (X, y) in enumerate(dataloader):
 
